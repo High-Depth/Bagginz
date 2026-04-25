@@ -70,43 +70,63 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         
         var action = deposit ? "Deposit" : "Withdraw";
         PrintDebug($"Bagginz: {action} starting...");
+        PrintDebug("Bagginz: Opening saddlebag...");
 
-        // Try to click the menu item FIRST, while context menu is still open!
-        bool clicked = false;
-        for (int i = 0; i < 10; i++)
-        {
-            if (TryClickContextMenuItem(deposit))
-            {
-                clicked = true;
-                break;
-            }
-            System.Threading.Thread.Sleep(30);
-        }
-
-        // Now open saddlebag
-        Task.Run(() => CompleteTransfer(clicked));
+        Task.Run(() => DoTransfer(deposit));
     }
 
-    private void CompleteTransfer(bool menuWasClicked)
+    private void DoTransfer(bool deposit)
     {
         try
         {
             var isSaddlebagOpen = IsSaddlebagOpen();
             
-            System.Threading.Thread.Sleep(100);
-
+            // Open saddlebag if not already open
             if (!isSaddlebagOpen)
             {
                 _commandManager.ProcessCommand("/saddlebag");
-                System.Threading.Thread.Sleep(500);
+                System.Threading.Thread.Sleep(800);
             }
 
-            if (!isSaddlebagOpen)
-            {
-                _commandManager.ProcessCommand("/saddlebag");
-            }
+            // Now the saddlebag is open
+            // "Add All to Saddlebag" / "Remove All from Saddlebag" options are now available
+            // Try to find and click them automatically
             
-            PrintDebug(menuWasClicked ? "Bagginz: DONE!" : "Bagginz: Done (manual)");
+            bool foundAndClicked = false;
+            
+            // Try multiple times to catch the context menu
+            for (int attempt = 0; attempt < 15; attempt++)
+            {
+                if (TryFindAndClickTransferOption(deposit))
+                {
+                    foundAndClicked = true;
+                    PrintDebug("Bagginz: AUTO-CLICK SUCCESS!");
+                    break;
+                }
+                System.Threading.Thread.Sleep(50);
+            }
+
+            if (!foundAndClicked)
+            {
+                if (deposit)
+                {
+                    PrintDebug("Tip: Shift+RightClick item to deposit");
+                }
+                else
+                {
+                    PrintDebug("Tip: RightClick item in saddlebag to withdraw");
+                }
+            }
+
+            // Wait a moment then close saddlebag (if we opened it)
+            System.Threading.Thread.Sleep(500);
+            
+            if (!isSaddlebagOpen)
+            {
+                _commandManager.ProcessCommand("/saddlebag");
+            }
+
+            PrintDebug(foundAndClicked ? "Bagginz: DONE!" : "Bagginz: Done");
         }
         catch (Exception ex)
         {
@@ -118,53 +138,28 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         }
     }
 
-    private bool TryClickContextMenuItem(bool deposit)
+    private bool TryFindAndClickTransferOption(bool deposit)
     {
         var contextAddon = _gameGui.GetAddonByName("ContextMenu", 1);
         if (contextAddon.IsNull)
-        {
-            PrintDebug("NO CONTEXT MENU");
             return false;
-        }
 
         var addon = (AtkUnitBase*)contextAddon.Address;
         if (addon == null || !addon->IsVisible)
-        {
-            PrintDebug("CONTEXT MENU NOT VISIBLE");
             return false;
-        }
 
-        var isSaddlebagOpen = IsSaddlebagOpen();
+        var isSaddlebagOpenNow = IsSaddlebagOpen();
         
         var agent = GetInventoryContextAgent();
         if (agent == null)
-        {
-            PrintDebug("NO AGENT");
             return false;
-        }
 
         int targetIndex = -1;
         string targetText = "";
 
         var maxItems = Math.Min(agent->ContextItemCount, 64);
         
-        PrintDebug($"SCAN: {maxItems} items (sb={isSaddlebagOpen})");
-        
-        for (int i = 0; i < maxItems; i++)
-        {
-            var param = agent->EventParams[agent->ContexItemStartIndex + i];
-            if (param.Type != ValueType.String && param.Type != ValueType.ManagedString)
-                continue;
-
-            var text = ReadAtkValueString(param);
-            if (string.IsNullOrWhiteSpace(text))
-                continue;
-
-            var trimmed = text.Trim();
-            PrintDebug($"[{i}]: {trimmed}");
-        }
-
-        // Search again with matching
+        // First pass: check for menu items
         for (int i = 0; i < maxItems; i++)
         {
             var param = agent->EventParams[agent->ContexItemStartIndex + i];
@@ -177,45 +172,43 @@ public sealed unsafe class Bagginz : IDalamudPlugin
 
             var trimmed = text.Trim();
 
-            bool found = false;
-            if (isSaddlebagOpen)
+            // Looking for saddlebag transfer options
+            if (isSaddlebagOpenNow)
             {
-                if (trimmed.Contains("Remove") || trimmed.Contains("Withdraw"))
+                // In saddlebag - looking for withdraw
+                if (trimmed.Contains("Remove", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.Contains("Withdraw", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (trimmed.Contains("Saddlebag") || trimmed.Contains("Inventory") || trimmed == "Remove All")
+                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed == "Remove All")
                     {
-                        found = true;
+                        targetIndex = i;
+                        targetText = trimmed;
+                        break;
                     }
                 }
             }
             else
             {
-                if (trimmed.Contains("Add"))
+                // In inventory - looking for deposit  
+                if (trimmed.Contains("Add", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (trimmed.Contains("Saddlebag") || trimmed == "Add All")
+                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed == "Add All")
                     {
-                        found = true;
+                        targetIndex = i;
+                        targetText = trimmed;
+                        break;
                     }
                 }
-            }
-
-            if (found)
-            {
-                targetIndex = i;
-                targetText = trimmed;
-                PrintDebug($"FOUND [{i}]: {targetText}");
-                break;
             }
         }
 
         if (targetIndex < 0)
-        {
-            PrintDebug("NOT FOUND");
             return false;
-        }
 
-        PrintDebug($"CLICK [{targetIndex}]");
-
+        // Click it!
         var values = stackalloc AtkValue[5];
         values[0].Type = ValueType.Int;
         values[0].Int = 0;
