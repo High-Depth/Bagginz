@@ -73,23 +73,17 @@ public sealed unsafe class Bagginz : IDalamudPlugin
 
         // Try to click the menu item FIRST, while context menu is still open!
         bool clicked = false;
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 10; i++)
         {
             if (TryClickContextMenuItem(deposit))
             {
                 clicked = true;
-                PrintDebug("Bagginz: Clicked menu item!");
                 break;
             }
-            System.Threading.Thread.Sleep(25);
+            System.Threading.Thread.Sleep(30);
         }
 
-        if (!clicked)
-        {
-            PrintDebug("Bagginz: Could not auto-click, trying saddlebag anyway...");
-        }
-
-        // Now open saddlebag to complete the transfer
+        // Now open saddlebag
         Task.Run(() => CompleteTransfer(clicked));
     }
 
@@ -99,23 +93,20 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         {
             var isSaddlebagOpen = IsSaddlebagOpen();
             
-            // Wait a bit for the click to register
             System.Threading.Thread.Sleep(100);
 
-            // Open saddlebag if not already open
             if (!isSaddlebagOpen)
             {
                 _commandManager.ProcessCommand("/saddlebag");
                 System.Threading.Thread.Sleep(500);
             }
 
-            // Close saddlebag if we opened it
             if (!isSaddlebagOpen)
             {
                 _commandManager.ProcessCommand("/saddlebag");
             }
             
-            PrintDebug(menuWasClicked ? "Bagginz: Done!" : "Bagginz: Manual action required");
+            PrintDebug(menuWasClicked ? "Bagginz: DONE!" : "Bagginz: Done (manual)");
         }
         catch (Exception ex)
         {
@@ -132,12 +123,14 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         var contextAddon = _gameGui.GetAddonByName("ContextMenu", 1);
         if (contextAddon.IsNull)
         {
+            PrintDebug("NO CONTEXT MENU");
             return false;
         }
 
         var addon = (AtkUnitBase*)contextAddon.Address;
         if (addon == null || !addon->IsVisible)
         {
+            PrintDebug("CONTEXT MENU NOT VISIBLE");
             return false;
         }
 
@@ -146,16 +139,16 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         var agent = GetInventoryContextAgent();
         if (agent == null)
         {
+            PrintDebug("NO AGENT");
             return false;
         }
 
         int targetIndex = -1;
         string targetText = "";
 
-        var maxItems = Math.Min(agent->ContextItemCount, 50);
+        var maxItems = Math.Min(agent->ContextItemCount, 64);
         
-        // DEBUG: Print ALL menu items first
-        PrintDebug($"Bagginz: Scanning {maxItems} menu items (saddlebag={isSaddlebagOpen})...");
+        PrintDebug($"SCAN: {maxItems} items (sb={isSaddlebagOpen})");
         
         for (int i = 0; i < maxItems; i++)
         {
@@ -168,52 +161,61 @@ public sealed unsafe class Bagginz : IDalamudPlugin
                 continue;
 
             var trimmed = text.Trim();
-            
-            // DEBUG: Show all menu items
-            PrintDebug($"Bagginz: [{i}] '{trimmed}'");
+            PrintDebug($"[{i}]: {trimmed}");
+        }
 
-            // Search for saddlebag transfer options
+        // Search again with matching
+        for (int i = 0; i < maxItems; i++)
+        {
+            var param = agent->EventParams[agent->ContexItemStartIndex + i];
+            if (param.Type != ValueType.String && param.Type != ValueType.ManagedString)
+                continue;
+
+            var text = ReadAtkValueString(param);
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            var trimmed = text.Trim();
+
+            bool found = false;
             if (isSaddlebagOpen)
             {
-                // Looking for "Remove from Saddlebag" options
-                if (trimmed.Contains("Remove", StringComparison.OrdinalIgnoreCase) || 
-                    trimmed.Contains("Withdraw", StringComparison.OrdinalIgnoreCase))
+                if (trimmed.Contains("Remove") || trimmed.Contains("Withdraw"))
                 {
-                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) || 
-                        trimmed.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
-                        trimmed == "Remove All")
+                    if (trimmed.Contains("Saddlebag") || trimmed.Contains("Inventory") || trimmed == "Remove All")
                     {
-                        targetIndex = i;
-                        targetText = trimmed;
-                        break;
+                        found = true;
                     }
                 }
             }
             else
             {
-                // Looking for "Add to Saddlebag" options
-                if (trimmed.Contains("Add", StringComparison.OrdinalIgnoreCase))
+                if (trimmed.Contains("Add"))
                 {
-                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) ||
-                        trimmed == "Add All")
+                    if (trimmed.Contains("Saddlebag") || trimmed == "Add All")
                     {
-                        targetIndex = i;
-                        targetText = trimmed;
-                        break;
+                        found = true;
                     }
                 }
+            }
+
+            if (found)
+            {
+                targetIndex = i;
+                targetText = trimmed;
+                PrintDebug($"FOUND [{i}]: {targetText}");
+                break;
             }
         }
 
         if (targetIndex < 0)
         {
-            PrintDebug("Bagginz: No matching transfer item found");
+            PrintDebug("NOT FOUND");
             return false;
         }
 
-        PrintDebug($"Bagginz: CLICKING [{targetIndex}] '{targetText}'");
+        PrintDebug($"CLICK [{targetIndex}]");
 
-        // Click the menu item
         var values = stackalloc AtkValue[5];
         values[0].Type = ValueType.Int;
         values[0].Int = 0;
