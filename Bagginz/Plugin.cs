@@ -24,7 +24,13 @@ public sealed unsafe class Bagginz : IDalamudPlugin
     private readonly ICommandManager _commandManager;
 
     private bool _isOperationPending;
-    private bool _depositOperation;
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    private const byte VK_A = 0x41;
+    private const uint KEYEVENTF_KEYDOWN = 0x0000;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
 
     public Bagginz(
         IContextMenu contextMenu,
@@ -51,12 +57,12 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         if (target?.TargetItem == null)
             return;
 
-        var isSaddlebag = IsSaddlebagOpen();
-
+        // Always show "Deposit To Saddlebag" for main inventory items
+        // The user right-clicked in their inventory, they want to deposit
         args.AddMenuItem(new MenuItem
         {
-            Name = isSaddlebag ? "Withdraw to Inventory" : "Deposit To Saddlebag",
-            OnClicked = menuArgs => ExecuteTransfer(deposit: !isSaddlebag)
+            Name = "Deposit To Saddlebag",
+            OnClicked = menuArgs => ExecuteTransfer(deposit: true)
         });
     }
 
@@ -66,11 +72,9 @@ public sealed unsafe class Bagginz : IDalamudPlugin
             return;
 
         _isOperationPending = true;
-        _depositOperation = deposit;
         
         var action = deposit ? "Deposit" : "Withdraw";
-        PrintDebug($"Bagginz: {action} starting...");
-        PrintDebug("Bagginz: Opening saddlebag...");
+        PrintDebug($"Bagginz: {action}...");
 
         Task.Run(() => DoTransfer(deposit));
     }
@@ -85,48 +89,34 @@ public sealed unsafe class Bagginz : IDalamudPlugin
             if (!isSaddlebagOpen)
             {
                 _commandManager.ProcessCommand("/saddlebag");
-                System.Threading.Thread.Sleep(800);
+                System.Threading.Thread.Sleep(700);
             }
 
-            // Now the saddlebag is open
-            // "Add All to Saddlebag" / "Remove All from Saddlebag" options are now available
-            // Try to find and click them automatically
+            // Wait for saddlebag UI to be ready
+            System.Threading.Thread.Sleep(300);
+
+            // Try auto-click first
+            bool autoClicked = TryClickTransferOption(deposit);
             
-            bool foundAndClicked = false;
-            
-            // Try multiple times to catch the context menu
-            for (int attempt = 0; attempt < 15; attempt++)
+            if (autoClicked)
             {
-                if (TryFindAndClickTransferOption(deposit))
-                {
-                    foundAndClicked = true;
-                    PrintDebug("Bagginz: AUTO-CLICK SUCCESS!");
-                    break;
-                }
-                System.Threading.Thread.Sleep(50);
+                PrintDebug("Bagginz: Auto-clicked transfer!");
             }
-
-            if (!foundAndClicked)
+            else
             {
-                if (deposit)
-                {
-                    PrintDebug("Tip: Shift+RightClick item to deposit");
-                }
-                else
-                {
-                    PrintDebug("Tip: RightClick item in saddlebag to withdraw");
-                }
+                // Fallback: use keyboard shortcut
+                PrintDebug("Bagginz: Using keyboard shortcut...");
+                PressKeyboardShortcut();
+                System.Threading.Thread.Sleep(500);
             }
 
-            // Wait a moment then close saddlebag (if we opened it)
-            System.Threading.Thread.Sleep(500);
-            
+            // Close saddlebag if we opened it
             if (!isSaddlebagOpen)
             {
                 _commandManager.ProcessCommand("/saddlebag");
             }
 
-            PrintDebug(foundAndClicked ? "Bagginz: DONE!" : "Bagginz: Done");
+            PrintDebug("Bagginz: Done!");
         }
         catch (Exception ex)
         {
@@ -138,7 +128,7 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         }
     }
 
-    private bool TryFindAndClickTransferOption(bool deposit)
+    private bool TryClickTransferOption(bool deposit)
     {
         var contextAddon = _gameGui.GetAddonByName("ContextMenu", 1);
         if (contextAddon.IsNull)
@@ -148,18 +138,13 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         if (addon == null || !addon->IsVisible)
             return false;
 
-        var isSaddlebagOpenNow = IsSaddlebagOpen();
-        
         var agent = GetInventoryContextAgent();
         if (agent == null)
             return false;
 
         int targetIndex = -1;
-        string targetText = "";
-
         var maxItems = Math.Min(agent->ContextItemCount, 64);
         
-        // First pass: check for menu items
         for (int i = 0; i < maxItems; i++)
         {
             var param = agent->EventParams[agent->ContexItemStartIndex + i];
@@ -172,43 +157,25 @@ public sealed unsafe class Bagginz : IDalamudPlugin
 
             var trimmed = text.Trim();
 
-            // Looking for saddlebag transfer options
-            if (isSaddlebagOpenNow)
+            // Search for Add All to Saddlebag
+            if (trimmed.Contains("Add", StringComparison.OrdinalIgnoreCase) && 
+                trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase))
             {
-                // In saddlebag - looking for withdraw
-                if (trimmed.Contains("Remove", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.Contains("Withdraw", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) ||
-                        trimmed.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
-                        trimmed == "Remove All")
-                    {
-                        targetIndex = i;
-                        targetText = trimmed;
-                        break;
-                    }
-                }
+                targetIndex = i;
+                break;
             }
-            else
+            // Also check for just "Add All" as fallback
+            if (trimmed == "Add All")
             {
-                // In inventory - looking for deposit  
-                if (trimmed.Contains("Add", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) ||
-                        trimmed == "Add All")
-                    {
-                        targetIndex = i;
-                        targetText = trimmed;
-                        break;
-                    }
-                }
+                targetIndex = i;
+                break;
             }
         }
 
         if (targetIndex < 0)
             return false;
 
-        // Click it!
+        // Click it
         var values = stackalloc AtkValue[5];
         values[0].Type = ValueType.Int;
         values[0].Int = 0;
@@ -224,6 +191,14 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         addon->FireCallback(2, values);
         
         return true;
+    }
+
+    private void PressKeyboardShortcut()
+    {
+        // Press 'A' key - in saddlebag, 'A' is the shortcut for "Add All"
+        keybd_event(VK_A, 0, KEYEVENTF_KEYDOWN, UIntPtr.Zero);
+        System.Threading.Thread.Sleep(50);
+        keybd_event(VK_A, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     private static unsafe AgentInventoryContext* GetInventoryContextAgent()
