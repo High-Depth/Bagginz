@@ -71,8 +71,7 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         var action = deposit ? "Deposit" : "Withdraw";
         PrintDebug($"Bagginz: {action} starting...");
 
-        // CRITICAL: Try to click the menu item FIRST, while context menu is still open!
-        // The context menu closes when we click our custom item, so we must act fast
+        // Try to click the menu item FIRST, while context menu is still open!
         bool clicked = false;
         for (int i = 0; i < 8; i++)
         {
@@ -133,14 +132,12 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         var contextAddon = _gameGui.GetAddonByName("ContextMenu", 1);
         if (contextAddon.IsNull)
         {
-            PrintDebug("Bagginz: No context menu found");
             return false;
         }
 
         var addon = (AtkUnitBase*)contextAddon.Address;
         if (addon == null || !addon->IsVisible)
         {
-            PrintDebug("Bagginz: Context menu not visible");
             return false;
         }
 
@@ -149,7 +146,6 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         var agent = GetInventoryContextAgent();
         if (agent == null)
         {
-            PrintDebug("Bagginz: No agent");
             return false;
         }
 
@@ -157,6 +153,10 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         string targetText = "";
 
         var maxItems = Math.Min(agent->ContextItemCount, 50);
+        
+        // DEBUG: Print ALL menu items first
+        PrintDebug($"Bagginz: Scanning {maxItems} menu items (saddlebag={isSaddlebagOpen})...");
+        
         for (int i = 0; i < maxItems; i++)
         {
             var param = agent->EventParams[agent->ContexItemStartIndex + i];
@@ -168,34 +168,50 @@ public sealed unsafe class Bagginz : IDalamudPlugin
                 continue;
 
             var trimmed = text.Trim();
+            
+            // DEBUG: Show all menu items
+            PrintDebug($"Bagginz: [{i}] '{trimmed}'");
 
+            // Search for saddlebag transfer options
             if (isSaddlebagOpen)
             {
-                if (trimmed.Contains("Remove") && (trimmed.Contains("Saddlebag") || trimmed == "Remove All"))
+                // Looking for "Remove from Saddlebag" options
+                if (trimmed.Contains("Remove", StringComparison.OrdinalIgnoreCase) || 
+                    trimmed.Contains("Withdraw", StringComparison.OrdinalIgnoreCase))
                 {
-                    targetIndex = i;
-                    targetText = trimmed;
-                    break;
+                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) || 
+                        trimmed.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed == "Remove All")
+                    {
+                        targetIndex = i;
+                        targetText = trimmed;
+                        break;
+                    }
                 }
             }
             else
             {
-                if (trimmed.Contains("Add All") && trimmed.Contains("Saddlebag"))
+                // Looking for "Add to Saddlebag" options
+                if (trimmed.Contains("Add", StringComparison.OrdinalIgnoreCase))
                 {
-                    targetIndex = i;
-                    targetText = trimmed;
-                    break;
+                    if (trimmed.Contains("Saddlebag", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed == "Add All")
+                    {
+                        targetIndex = i;
+                        targetText = trimmed;
+                        break;
+                    }
                 }
             }
         }
 
         if (targetIndex < 0)
         {
-            PrintDebug("Bagginz: Target menu item not found");
+            PrintDebug("Bagginz: No matching transfer item found");
             return false;
         }
 
-        PrintDebug($"Bagginz: Found '{targetText}' at index {targetIndex}");
+        PrintDebug($"Bagginz: CLICKING [{targetIndex}] '{targetText}'");
 
         // Click the menu item
         var values = stackalloc AtkValue[5];
