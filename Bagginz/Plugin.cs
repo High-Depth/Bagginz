@@ -25,7 +25,6 @@ public sealed unsafe class Bagginz : IDalamudPlugin
 
     private bool _isOperationPending;
     private bool _depositOperation;
-    private long _menuOpenTick;
 
     public Bagginz(
         IContextMenu contextMenu,
@@ -41,26 +40,6 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         _commandManager = commandManager;
 
         _contextMenu.OnMenuOpened += OnMenuOpened;
-        
-        // Register chat command
-        _commandManager.AddHandler("/bagginz", new CommandInfo(OnCommand)
-        {
-            HelpMessage = "Open saddlebag for deposit/withdraw"
-        });
-    }
-
-    private void OnCommand(string command, string args)
-    {
-        if (args == "debug")
-        {
-            var isOpen = IsSaddlebagOpen();
-            var contextAddon = _gameGui.GetAddonByName("ContextMenu", 1);
-            PrintDebug($"Saddlebag: {isOpen}, ContextMenu: {!contextAddon.IsNull}");
-            return;
-        }
-        
-        // Toggle saddlebag
-        _commandManager.ProcessCommand("/saddlebag");
     }
 
     private void OnMenuOpened(IMenuOpenedArgs args)
@@ -73,7 +52,6 @@ public sealed unsafe class Bagginz : IDalamudPlugin
             return;
 
         var isSaddlebag = IsSaddlebagOpen();
-        _menuOpenTick = Environment.TickCount64;
 
         args.AddMenuItem(new MenuItem
         {
@@ -93,57 +71,52 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         var action = deposit ? "Deposit" : "Withdraw";
         PrintDebug($"Bagginz: {action} starting...");
 
-        // Run on framework to ensure we're in the right context
-        _framework.Update += OnFrameworkUpdate;
+        // CRITICAL: Try to click the menu item FIRST, while context menu is still open!
+        // The context menu closes when we click our custom item, so we must act fast
+        bool clicked = false;
+        for (int i = 0; i < 8; i++)
+        {
+            if (TryClickContextMenuItem(deposit))
+            {
+                clicked = true;
+                PrintDebug("Bagginz: Clicked menu item!");
+                break;
+            }
+            System.Threading.Thread.Sleep(25);
+        }
+
+        if (!clicked)
+        {
+            PrintDebug("Bagginz: Could not auto-click, trying saddlebag anyway...");
+        }
+
+        // Now open saddlebag to complete the transfer
+        Task.Run(() => CompleteTransfer(clicked));
     }
 
-    private void OnFrameworkUpdate(IFramework framework)
-    {
-        _framework.Update -= OnFrameworkUpdate;
-        
-        Task.Run(() => DoTransfer());
-    }
-
-    private void DoTransfer()
+    private void CompleteTransfer(bool menuWasClicked)
     {
         try
         {
             var isSaddlebagOpen = IsSaddlebagOpen();
             
-            // Step 1: Open saddlebag first
+            // Wait a bit for the click to register
+            System.Threading.Thread.Sleep(100);
+
+            // Open saddlebag if not already open
             if (!isSaddlebagOpen)
             {
-                PrintDebug("Bagginz: Opening saddlebag...");
                 _commandManager.ProcessCommand("/saddlebag");
-                System.Threading.Thread.Sleep(600);
+                System.Threading.Thread.Sleep(500);
             }
 
-            // Step 2: Wait for context menu to appear and click it
-            for (int retry = 0; retry < 10; retry++)
-            {
-                System.Threading.Thread.Sleep(100);
-                
-                if (TryClickContextMenuItem(_depositOperation))
-                {
-                    PrintDebug("Bagginz: Clicked transfer action!");
-                    System.Threading.Thread.Sleep(300);
-                    break;
-                }
-                
-                if (retry == 9)
-                {
-                    PrintDebug("Bagginz: Could not find menu, do it manually");
-                }
-            }
-
-            // Step 3: Close saddlebag if we opened it
+            // Close saddlebag if we opened it
             if (!isSaddlebagOpen)
             {
-                System.Threading.Thread.Sleep(200);
                 _commandManager.ProcessCommand("/saddlebag");
             }
             
-            PrintDebug("Bagginz: Done!");
+            PrintDebug(menuWasClicked ? "Bagginz: Done!" : "Bagginz: Manual action required");
         }
         catch (Exception ex)
         {
@@ -159,17 +132,26 @@ public sealed unsafe class Bagginz : IDalamudPlugin
     {
         var contextAddon = _gameGui.GetAddonByName("ContextMenu", 1);
         if (contextAddon.IsNull)
+        {
+            PrintDebug("Bagginz: No context menu found");
             return false;
+        }
 
         var addon = (AtkUnitBase*)contextAddon.Address;
         if (addon == null || !addon->IsVisible)
+        {
+            PrintDebug("Bagginz: Context menu not visible");
             return false;
+        }
 
         var isSaddlebagOpen = IsSaddlebagOpen();
         
         var agent = GetInventoryContextAgent();
         if (agent == null)
+        {
+            PrintDebug("Bagginz: No agent");
             return false;
+        }
 
         int targetIndex = -1;
         string targetText = "";
@@ -208,7 +190,12 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         }
 
         if (targetIndex < 0)
+        {
+            PrintDebug("Bagginz: Target menu item not found");
             return false;
+        }
+
+        PrintDebug($"Bagginz: Found '{targetText}' at index {targetIndex}");
 
         // Click the menu item
         var values = stackalloc AtkValue[5];
@@ -271,6 +258,5 @@ public sealed unsafe class Bagginz : IDalamudPlugin
     public void Dispose()
     {
         _contextMenu.OnMenuOpened -= OnMenuOpened;
-        _commandManager.RemoveHandler("/bagginz");
     }
 }
