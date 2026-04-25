@@ -1,6 +1,6 @@
+Bagginz.zip
 bin/
 obj/
 *.user
 *.suo
 .vs/
-*.log
