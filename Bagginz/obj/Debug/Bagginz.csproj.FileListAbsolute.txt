@@ -1,9 +1,0 @@
-/home/xazel/Documents/Bagginz/Bagginz/obj/Debug/Bagginz.csproj.AssemblyReference.cache
-/home/xazel/Documents/Bagginz/Bagginz/obj/Debug/Bagginz.GeneratedMSBuildEditorConfig.editorconfig
-/home/xazel/Documents/Bagginz/Bagginz/obj/Debug/Bagginz.AssemblyInfoInputs.cache
-/home/xazel/Documents/Bagginz/Bagginz/obj/Debug/Bagginz.AssemblyInfo.cs
-/home/xazel/Documents/Bagginz/Bagginz/obj/Debug/Bagginz.csproj.CoreCompileInputs.cache
-/home/xazel/Documents/Bagginz/Bagginz/obj/Debug/Bagginz.sourcelink.json
-/home/xazel/Documents/Bagginz/Bagginz/bin/Debug/Bagginz.deps.json
-/home/xazel/Documents/Bagginz/Bagginz/bin/Debug/Bagginz.dll
-/home/xazel/Documents/Bagginz/Bagginz/obj/Debug/Bagginz.dll
