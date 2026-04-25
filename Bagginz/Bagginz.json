@@ -1,6 +1,7 @@
 {
   "Author": "Bagginz",
   "Name": "Bagginz",
+  "Punchline": "Quickly deposit and withdraw items from your chocobo saddlebag via right-click context menu.",
   "Description": "Quickly deposit and withdraw items from your chocobo saddlebag via right-click context menu.",
   "InternalName": "Bagginz",
   "AssemblyVersion": "1.0.0.0",

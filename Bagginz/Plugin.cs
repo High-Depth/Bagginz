@@ -1,7 +1,6 @@
 using System;
-using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
+using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Game.Text;
@@ -9,10 +8,11 @@ using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
 
 namespace Bagginz;
 
-public sealed class Bagginz : IDalamudPlugin
+public sealed unsafe class Bagginz : IDalamudPlugin
 {
     private readonly IContextMenu _contextMenu;
     private readonly IChatGui _chatGui;
@@ -68,39 +68,41 @@ public sealed class Bagginz : IDalamudPlugin
         var action = deposit ? "Deposit" : "Withdraw";
         PrintDebug($"Bagginz: {action} initiated...");
 
-        Task.Run(async () =>
-        {
-            try
-            {
-                var isSaddlebagOpen = IsSaddlebagOpen();
-
-                if (!isSaddlebagOpen)
-                {
-                    await Task.Delay(100);
-                    _commandManager.ProcessCommand("/saddlebag");
-                    await Task.Delay(400);
-                }
-
-                if (!TryAutoSelectContextMenuItem())
-                {
-                    PrintDebug("Bagginz: Could not find context menu action.");
-                }
-
-                await Task.Delay(200);
-                _commandManager.ProcessCommand("/saddlebag");
-            }
-            catch (Exception ex)
-            {
-                PrintDebug($"Bagginz: Error - {ex.Message}");
-            }
-            finally
-            {
-                _isOperationPending = false;
-            }
-        });
+        Task.Run(() => ExecuteTransferInternal());
     }
 
-    private bool TryAutoSelectContextMenuItem()
+    private void ExecuteTransferInternal()
+    {
+        try
+        {
+            var isSaddlebagOpen = IsSaddlebagOpen();
+
+            if (!isSaddlebagOpen)
+            {
+                System.Threading.Thread.Sleep(100);
+                _commandManager.ProcessCommand("/saddlebag");
+                System.Threading.Thread.Sleep(400);
+            }
+
+            if (!TryAutoSelectContextMenuItem())
+            {
+                PrintDebug("Bagginz: Could not find context menu action.");
+            }
+
+            System.Threading.Thread.Sleep(200);
+            _commandManager.ProcessCommand("/saddlebag");
+        }
+        catch (Exception ex)
+        {
+            PrintDebug($"Bagginz: Error - {ex.Message}");
+        }
+        finally
+        {
+            _isOperationPending = false;
+        }
+    }
+
+    private unsafe bool TryAutoSelectContextMenuItem()
     {
         var agent = GetInventoryContextAgent();
         if (agent == null)
@@ -195,13 +197,7 @@ public sealed class Bagginz : IDalamudPlugin
             {
                 var ptr = value.String;
                 if (ptr != null)
-                    return Marshal.PtrToStringUTF8((nint)ptr) ?? string.Empty;
-            }
-            else if (value.Type == ValueType.ManagedString)
-            {
-                var ptr = value.ManagedString;
-                if (ptr != null)
-                    return ptr->ToString();
+                    return ptr.ToString();
             }
         }
         catch { }
@@ -222,12 +218,12 @@ public sealed class Bagginz : IDalamudPlugin
         values[4].Type = ValueType.UInt;
         values[4].UInt = idx5;
 
-        addon->GenerateCallback(values, 5);
+        addon->FireCallback(2, values);
     }
 
     private void PrintDebug(string message)
     {
-        _chatGui.PrintChat(new XivChatEntry
+        _chatGui.Print(new XivChatEntry
         {
             Type = XivChatType.Debug,
             Message = new SeString(new TextPayload(message))

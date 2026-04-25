@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "Z3HYjoHHx1o=",
+  "success": true,
+  "projectFilePath": "/home/xazel/Documents/Bagginz/Bagginz/Bagginz.csproj",
+  "expectedPackageFiles": [
+    "/home/xazel/.nuget/packages/dalamudpackager/14.0.1/dalamudpackager.14.0.1.nupkg.sha512",
+    "/home/xazel/.nuget/packages/dotnet.reproduciblebuilds/1.2.39/dotnet.reproduciblebuilds.1.2.39.nupkg.sha512"
+  ],
+  "logs": []
+}

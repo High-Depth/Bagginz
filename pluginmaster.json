@@ -1,0 +1,22 @@
+{
+  "plugins": [
+    {
+      "Author": "Bagginz",
+      "Name": "Bagginz",
+      "Punchline": "Quickly deposit and withdraw items from your chocobo saddlebag via right-click context menu.",
+      "Description": "Quickly deposit and withdraw items from your chocobo saddlebag via right-click context menu.",
+      "InternalName": "Bagginz",
+      "AssemblyVersion": "1.0.0.0",
+      "FileVersion": "1.0.0.0",
+      "Version": "1.0.0",
+      "ApiLevel": 14,
+      "IsHide": false,
+      "DownloadLink": "https://github.com/High-Depth/Bagginz/releases/download/v1.0.0/Bagginz.zip",
+      "LoadPriority": 0,
+      "IconUrl": "",
+      "SourceUrl": "https://github.com/High-Depth/Bagginz",
+      "Tags": ["Inventory", "Saddlebag", "Chocobo"],
+      "CategoryTags": []
+    }
+  ]
+}

@@ -10,16 +10,26 @@ A Dalamud plugin for FFXIV that adds quick deposit/withdraw options to the choco
 
 ## Installation
 
-1. Build the plugin (requires .NET SDK and Dalamud dev environment)
-2. Copy the output to yourDalamud plugins folder
-3. Enable the plugin in-game
+### Method 1: Custom Repository (Recommended for development)
+
+1. Open Dalamud settings in FFXIV
+2. Go to "Experimental" tab
+3. Add this URL as a custom repository:
+   ```
+   https://raw.githubusercontent.com/High-Depth/Bagginz/main/pluginmaster.json
+   ```
+4. Search for "Bagginz" in the plugin installer and install it
+
+### Method 2: Manual Installation
+
+1. Build the plugin: `dotnet build`
+2. Copy `bin/Debug/Bagginz.dll` and `bin/Debug/Bagginz.json` to your plugins folder
 
 ## Development
 
 ### Requirements
 - .NET 10.0 SDK
-- Dalamud.NET.Sdk
-- FFXIVClientStructs
+- Dalamud.NET.Sdk (included via XLDeploy)
 
 ### Building
 ```bash
@@ -27,20 +37,7 @@ cd Bagginz
 dotnet build
 ```
 
-## Usage
-
-1. Open your inventory (press I)
-2. Right-click any item
-3. Select "Deposit To Saddlebag"
-4. The plugin will:
-   - Open the saddlebag (via `/saddlebag` command)
-   - Deposit the item
-   - Close the saddlebag
-
-When viewing the saddlebag inventory:
-1. Right-click any item
-2. Select "Withdraw to Inventory"
-3. The plugin will withdraw the item to your main inventory
+The DLL will be output to `bin/Debug/Bagginz.dll`
 
 ## Technical Notes
 
@@ -48,3 +45,13 @@ When viewing the saddlebag inventory:
 - Monitors context menu for "Add All to Saddlebag" / "Remove All from Saddlebag" actions
 - Auto-selects the appropriate action and closes the context menu
 - Operation completes within ~1 second
+
+## Building the Custom Repo
+
+The `pluginmaster.json` file is automatically generated during build and points to the GitHub releases.
+
+To update the plugin in-game:
+1. Make code changes
+2. Build: `dotnet build -c Release`
+3. Create a GitHub release with the DLL and JSON files
+4. Update the pluginmaster.json to point to the new version
