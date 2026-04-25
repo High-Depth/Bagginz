@@ -68,29 +68,41 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         var action = deposit ? "Deposit" : "Withdraw";
         PrintDebug($"Bagginz: {action} initiated...");
 
-        Task.Run(() => ExecuteTransferInternal());
+        // IMMEDIATELY try to find and click the context menu item
+        // This MUST happen while the context menu is still open!
+        if (TryAutoSelectAndClickContextMenuItem())
+        {
+            // Menu item clicked - now complete the saddlebag operation
+            Task.Run(() => CompleteTransferAfterContextClick());
+        }
+        else
+        {
+            PrintDebug("Bagginz: Could not find context menu action.");
+            _isOperationPending = false;
+        }
     }
 
-    private void ExecuteTransferInternal()
+    private void CompleteTransferAfterContextClick()
     {
         try
         {
+            // Wait for context menu to close and action to process
+            System.Threading.Thread.Sleep(150);
+
             var isSaddlebagOpen = IsSaddlebagOpen();
 
             if (!isSaddlebagOpen)
             {
-                System.Threading.Thread.Sleep(100);
+                // Open saddlebag to complete the transfer
                 _commandManager.ProcessCommand("/saddlebag");
-                System.Threading.Thread.Sleep(400);
+                System.Threading.Thread.Sleep(500);
             }
 
-            if (!TryAutoSelectContextMenuItem())
-            {
-                PrintDebug("Bagginz: Could not find context menu action.");
-            }
-
+            // Close saddlebag
             System.Threading.Thread.Sleep(200);
             _commandManager.ProcessCommand("/saddlebag");
+            
+            PrintDebug("Bagginz: Transfer complete!");
         }
         catch (Exception ex)
         {
@@ -102,7 +114,7 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         }
     }
 
-    private unsafe bool TryAutoSelectContextMenuItem()
+    private bool TryAutoSelectAndClickContextMenuItem()
     {
         var agent = GetInventoryContextAgent();
         if (agent == null)
@@ -159,11 +171,10 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         if (targetIndex < 0)
             return false;
 
+        // Click the menu item
         GenerateCallback(addon, 0, targetIndex, 0U, 0, 0);
 
-        CloseContextMenu(agent, addon);
-
-        PrintDebug($"Bagginz: Executed '{targetText}'");
+        PrintDebug($"Bagginz: Clicked '{targetText}'");
         return true;
     }
 
@@ -183,27 +194,6 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         return (!buddy1.IsNull && buddy1.IsVisible) || (!buddy2.IsNull && buddy2.IsVisible);
     }
 
-    private static unsafe void CloseContextMenu(AgentInventoryContext* agent, AtkUnitBase* contextAddon)
-    {
-        try { agent->AgentInterface.Hide(); } catch { }
-        try { contextAddon->Hide(false, true, 0); } catch { }
-    }
-
-    private static unsafe string ReadAtkValueString(AtkValue value)
-    {
-        try
-        {
-            if (value.Type == ValueType.String)
-            {
-                var ptr = value.String;
-                if (ptr != null)
-                    return ptr.ToString();
-            }
-        }
-        catch { }
-        return string.Empty;
-    }
-
     private static unsafe void GenerateCallback(AtkUnitBase* addon, uint idx1, int idx2, uint idx3, uint idx4, uint idx5)
     {
         var values = stackalloc AtkValue[5];
@@ -219,6 +209,21 @@ public sealed unsafe class Bagginz : IDalamudPlugin
         values[4].UInt = idx5;
 
         addon->FireCallback(2, values);
+    }
+
+    private static unsafe string ReadAtkValueString(AtkValue value)
+    {
+        try
+        {
+            if (value.Type == ValueType.String)
+            {
+                var ptr = value.String;
+                if (ptr != null)
+                    return ptr.ToString();
+            }
+        }
+        catch { }
+        return string.Empty;
     }
 
     private void PrintDebug(string message)
