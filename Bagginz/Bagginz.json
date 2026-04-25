@@ -2,7 +2,7 @@
   "Author": "Bagginz",
   "Name": "Bagginz",
   "InternalName": "Bagginz",
-  "AssemblyVersion": "1.0.0.0",
+  "AssemblyVersion": "1.0.1.0",
   "Description": "Quickly deposit and withdraw items from your chocobo saddlebag via right-click context menu.",
   "ApplicableVersion": "any",
   "RepoUrl": "",
