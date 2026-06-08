@@ -1,5 +1,5 @@
 # Bagginz
-
+Still working on this shit, so it doesnt work. My first plugin, leave me alone lol.
 A Dalamud plugin for FFXIV that adds quick deposit/withdraw options to the chocobo saddlebag via right-click context menu.
 
 ## Features
